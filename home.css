@@ -1,0 +1,46 @@
+/* Reuse your existing styles (container, button, etc.) */
+
+/* Add new styles for homepage specific elements */
+
+.welcome {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.products {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.product-card {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.product-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.product-card img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.logout-btn {
+  margin-top: 20px;
+  background: #dc3545; /* Bootstrap danger color */
+}
+
+.logout-btn:hover {
+  background: #c82333;
+}

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f7f9fb; }
+    .sidebar {
+      width: 220px; position: fixed; height: 100%; background: #2f3542;
+      color: white; padding-top: 2rem;
+    }
+    .sidebar h2 { text-align: center; margin-bottom: 2rem; }
+    .sidebar a {
+      display: block; padding: 1rem 2rem; color: white;
+      text-decoration: none; border-bottom: 1px solid #404959;
+    }
+    .sidebar a:hover { background: #57606f; }
+    .content { margin-left: 220px; padding: 2rem; }
+    h1, h2 { color: #333; }
+    table {
+      width: 100%; border-collapse: collapse; margin-bottom: 2rem;
+    }
+    th, td {
+      border: 1px solid #ddd; padding: 0.8rem; text-align: left;
+    }
+    .product-form input, .product-form textarea {
+      width: 100%; margin: 0.5rem 0; padding: 0.6rem;
+      border: 1px solid #ccc; border-radius: 5px;
+    }
+    .variant-option { display: flex; gap: 10px; margin-bottom: 10px; }
+    .variant-option input { flex: 1; }
+    .variant-group { margin-bottom: 1rem; }
+    .btn {
+      background: #007bff; color: white; border: none;
+      padding: 0.6rem 1.2rem; cursor: pointer; border-radius: 5px;
+    }
+    .btn-danger { background: red; }
+    .btn-success { background: green; }
+  </style>
+</head>
+<body>
+
+<div class="sidebar">
+  <h2>ARKA INSTRUMENTS Admin</h2>
+  <a href="#" onclick="showSection('products')">Products</a>
+  <a href="#" onclick="showSection('orders')">Orders</a>
+</div>
+
+<div class="content">
+  <!-- Products Section -->
+  <div id="productsSection">
+    <h1>Products</h1>
+    <form id="productForm" class="product-form">
+      <input type="hidden" id="productId" />
+      <input type="text" id="name" placeholder="Product Name" required />
+      <input type="number" id="price" placeholder="Base Price" required />
+      <input type="text" id="image" placeholder="Image URL" required />
+      <textarea id="description" placeholder="Description" required></textarea>
+      <input type="text" id="category" placeholder="Category" required />
+      <input type="number" id="stock" placeholder="Total Stock" required />
+      <input type="number" id="discount" placeholder="Discount %" />
+      <h3>Variants</h3>
+      <div id="variantContainer"></div>
+      <button type="button" onclick="addVariantGroup()">+ Add Variant Group</button><br><br>
+      <button class="btn" type="submit">Save Product</button>
+      <div id="status"></div>
+    </form>
+
+    <h2>Products List</h2>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Price</th><th>Stock</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="productTable"></tbody>
+    </table>
+  </div>
+
+  <!-- Orders Section -->
+  <div id="ordersSection" style="display: none;">
+    <h1>Orders</h1>
+    <table>
+      <thead>
+        <tr>
+          <th>Order ID</th>
+          <th>Product</th>
+          <th>Variant</th>
+          <th>Qty</th>
+          <th>Price</th>
+          <th>Status</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody id="ordersTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyDswBN51Rg2xOBydYwHkLpHbnDPc3a2Fz0",
+    authDomain: "admin-b5673.firebaseapp.com",
+    projectId: "admin-b5673"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  function showSection(section) {
+    document.getElementById("productsSection").style.display = section === 'products' ? "block" : "none";
+    document.getElementById("ordersSection").style.display = section === 'orders' ? "block" : "none";
+    if (section === 'orders') loadOrders();
+  }
+
+  function addVariantGroup(prefilled = {}) {
+    const group = document.createElement("div");
+    group.className = "variant-group";
+    group.innerHTML = `
+      <input type="text" placeholder="Variant Type (e.g., Size)" class="variant-name" value="${prefilled.type || ''}" />
+      <div class="variant-options"></div>
+      <button type="button" onclick="addOption(this)">+ Add Option</button><hr/>
+    `;
+    document.getElementById("variantContainer").appendChild(group);
+    if (prefilled.options) {
+      prefilled.options.forEach(opt => {
+        const optionDiv = document.createElement("div");
+        optionDiv.className = "variant-option";
+        optionDiv.innerHTML = `
+          <input class="option-label" placeholder="Label" value="${opt.label}" />
+          <input class="option-price" type="number" placeholder="Price" value="${opt.price}" />
+          <input class="option-stock" type="number" placeholder="Stock" value="${opt.stock}" />
+          <button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">🗑</button>
+        `;
+        group.querySelector(".variant-options").appendChild(optionDiv);
+      });
+    }
+  }
+
+  function addOption(btn) {
+    const div = document.createElement("div");
+    div.className = "variant-option";
+    div.innerHTML = `
+      <input class="option-label" placeholder="Label" />
+      <input class="option-price" type="number" placeholder="Price" />
+      <input class="option-stock" type="number" placeholder="Stock" />
+      <button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">🗑</button>
+    `;
+    btn.previousElementSibling.appendChild(div);
+  }
+
+  function collectVariants() {
+    const v = {};
+    document.querySelectorAll('.variant-group').forEach(group => {
+      const type = group.querySelector('.variant-name').value.trim();
+      if (!type) return;
+      v[type] = {};
+      group.querySelectorAll('.variant-option').forEach(opt => {
+        const label = opt.querySelector('.option-label').value.trim();
+        const price = parseFloat(opt.querySelector('.option-price').value);
+        const stock = parseInt(opt.querySelector('.option-stock').value);
+        if (label && !isNaN(price) && !isNaN(stock)) {
+          v[type][label] = { price, stock };
+        }
+      });
+    });
+    return v;
+  }
+
+  async function loadProducts() {
+    const tbody = document.getElementById('productTable');
+    tbody.innerHTML = '';
+    const snap = await db.collection('products').orderBy('createdAt', 'desc').get();
+    snap.forEach(doc => {
+      const d = doc.data();
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${d.name}</td>
+        <td>₹${d.basePrice}</td>
+        <td>${d.stock}</td>
+        <td>
+          <button class="btn btn-success" onclick="editProduct('${doc.id}')">Edit</button>
+          <button class="btn btn-danger" onclick="deleteProduct('${doc.id}')">Delete</button>
+        </td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+
+  async function deleteProduct(id) {
+    await db.collection("products").doc(id).delete();
+    loadProducts();
+  }
+
+  async function editProduct(id) {
+    const doc = await db.collection("products").doc(id).get();
+    if (!doc.exists) return alert("Product not found");
+    const d = doc.data();
+    document.getElementById("productId").value = id;
+    document.getElementById("name").value = d.name;
+    document.getElementById("price").value = d.basePrice;
+    document.getElementById("image").value = d.image;
+    document.getElementById("description").value = d.description;
+    document.getElementById("category").value = d.category;
+    document.getElementById("stock").value = d.stock;
+    document.getElementById("discount").value = d.discount || '';
+    document.getElementById("variantContainer").innerHTML = '';
+    if (d.variants) {
+      for (const [type, options] of Object.entries(d.variants)) {
+        const opts = Object.entries(options).map(([label, val]) => ({ label, price: val.price, stock: val.stock }));
+        addVariantGroup({ type, options: opts });
+      }
+    }
+  }
+
+  document.getElementById("productForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("productId").value;
+    const data = {
+      name: document.getElementById("name").value,
+      basePrice: parseFloat(document.getElementById("price").value),
+      image: document.getElementById("image").value,
+      description: document.getElementById("description").value,
+      category: document.getElementById("category").value,
+      stock: parseInt(document.getElementById("stock").value),
+      discount: parseFloat(document.getElementById("discount").value || 0),
+      variants: collectVariants(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    if (id) {
+      await db.collection("products").doc(id).update(data);
+    } else {
+      data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection("products").add(data);
+    }
+    document.getElementById("productForm").reset();
+    document.getElementById("variantContainer").innerHTML = '';
+    loadProducts();
+  });
+
+  // ✅ Load Orders with custom orderId
+  async function loadOrders() {
+    const tbody = document.getElementById("ordersTable");
+    tbody.innerHTML = '';
+    const snap = await db.collection("orders").orderBy("timestamp", "desc").get();
+    snap.forEach(doc => {
+      const o = doc.data();
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${o.orderId || '#' + doc.id}</td>
+        <td>${o.productName}</td>
+        <td>${o.variantName || '-'}</td>
+        <td>${o.quantity || 1}</td>
+        <td>₹${o.price}</td>
+        <td>${o.status || 'Pending'}</td>
+        <td>${o.timestamp?.toDate().toLocaleString()}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  loadProducts();
+</script>
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Product Details</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
+    .container { max-width: 1200px; margin: auto; padding: 2rem; }
+    .top-section { display: flex; gap: 2rem; flex-wrap: wrap; }
+    .image-section img { width: 100%; max-width: 450px; object-fit: contain; }
+    .thumbnail-row { display: flex; gap: 1rem; margin-top: 1rem; }
+    .thumbnail-row img { width: 60px; height: 60px; cursor: pointer; border: 2px solid transparent; }
+    .thumbnail-row img.active { border-color: #007BFF; }
+    .details-section h2 { font-size: 2rem; margin: 0; }
+    .price { font-size: 1.5rem; margin: 1rem 0; }
+    .variant-group { margin-bottom: 1rem; }
+    .variant-group label { font-weight: bold; display: block; margin-bottom: .5rem; }
+    .variant-group select { width: 100%; padding: .5rem; border-radius: 5px; border: 1px solid #ccc; }
+    button.buy { padding: 12px 20px; background: #6c00ff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    .description-tabs { margin-top: 2rem; display: flex; gap: 2rem; border-top: 1px solid #ddd; padding-top: 1rem; }
+    .description-tabs div { flex: 1; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-section">
+      <div class="image-section">
+        <img id="mainImage" src="" alt="Product Image">
+        <div class="thumbnail-row" id="thumbnailRow"></div>
+      </div>
+      <div class="details-section">
+        <h2 id="name">Loading...</h2>
+        <p id="description"></p>
+        <div class="price">Price: ₹<span id="basePrice">0</span></div>
+        <div id="variantSection"></div>
+        <button class="buy" onclick="addToBag()">Add to Bag</button>
+      </div>
+    </div>
+
+    <div class="description-tabs">
+      <div><h4>Description</h4><p id="longDescription"></p></div>
+      <div><h4>Size & Fit</h4><p>Refer to our size guide for the best fit.</p></div>
+      <div><h4>Shipping</h4><p>Free shipping and returns available.</p></div>
+    </div>
+  </div>
+
+  <script>
+    // Initialize Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyDswBN51Rg2xOBydYwHkLpHbnDPc3a2Fz0",
+      authDomain: "admin-b5673.firebaseapp.com",
+      projectId: "admin-b5673"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const params = new URLSearchParams(window.location.search);
+    const productId = params.get('id');
+    let basePrice = 0, productData = null, selectedVariants = {};
+
+    function updateTotalPrice() {
+      let total = basePrice;
+      for (const v of Object.values(selectedVariants)) {
+        total += v.price;
+      }
+      document.getElementById('basePrice').textContent = total.toFixed(2);
+    }
+
+    async function addToBag() {
+      // Check stock
+      for (const v of Object.values(selectedVariants)) {
+        if (v.stock <= 0) {
+          alert(`❌ "${v.label}" is out of stock.`);
+          return;
+        }
+      }
+      // Prepare price
+      let totalPrice = basePrice;
+      for (const v of Object.values(selectedVariants)) totalPrice += v.price;
+
+      // Deduct stock
+      const updated = { ...productData.variants };
+      for (const [type, v] of Object.entries(selectedVariants)) {
+        updated[type][v.label].stock = v.stock - 1;
+      }
+      await db.collection('products').doc(productId).update({ variants: updated });
+
+      // Save order
+      await db.collection('orders').add({
+        productName: productData.name,
+        variantName: Object.entries(selectedVariants).map(
+          ([type, v]) => `${type}: ${v.label}`
+        ).join(', '),
+        quantity: 1,
+        price: totalPrice,
+        status: 'Pending',
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      alert('✅ Added to bag and stock updated.');
+      window.location.reload();
+    }
+
+    // Load product details
+    if (productId) {
+      db.collection('products').doc(productId).get().then(doc => {
+        if (doc.exists) {
+          productData = doc.data();
+          basePrice = productData.basePrice || 0;
+
+          document.getElementById('name').textContent = productData.name;
+          document.getElementById('description').textContent = productData.shortDescription || '';
+          document.getElementById('longDescription').textContent = productData.description || '';
+          document.getElementById('mainImage').src = productData.image;
+          document.getElementById('basePrice').textContent = basePrice.toFixed(2);
+
+          // Thumbnails
+          const row = document.getElementById('thumbnailRow');
+          (productData.images || [productData.image]).forEach((src, i) => {
+            const img = document.createElement('img');
+            img.src = src;
+            if (i === 0) img.classList.add('active');
+            img.onclick = () => {
+              document.getElementById('mainImage').src = src;
+              row.querySelectorAll('img').forEach(el => el.classList.remove('active'));
+              img.classList.add('active');
+            };
+            row.appendChild(img);
+          });
+
+          // Variants
+          const section = document.getElementById('variantSection');
+          for (const [type, options] of Object.entries(productData.variants || {})) {
+            const div = document.createElement('div');
+            div.className = 'variant-group';
+            const labelEl = document.createElement('label');
+            labelEl.textContent = type;
+            const sel = document.createElement('select');
+            sel.innerHTML = `<option value="">Select ${type}</option>`;
+            sel.onchange = () => {
+              const selOption = sel.value;
+              const item = basePrice && options[selOption];
+              if (selOption && item) {
+                selectedVariants[type] = { ...item, label: selOption };
+              } else delete selectedVariants[type];
+              updateTotalPrice();
+            };
+            for (const [lbl, item] of Object.entries(options)) {
+              const opt = document.createElement('option');
+              opt.value = lbl;
+              opt.textContent = `${lbl} – ₹${item.price} (${item.stock > 0 ? 'In Stock' : 'Out of Stock'})`;
+              if (item.stock <= 0) opt.disabled = true;
+              sel.appendChild(opt);
+            }
+            div.append(labelEl, sel);
+            section.appendChild(div);
+          }
+          updateTotalPrice();
+        }
+      });
+    }
+  </script>
+</body>
+</html>
